@@ -377,16 +377,23 @@ class Miner:
             self.counters_info[proofs] = 1
         try:
             def write_line(fw):
+                # Диапазон хороших плотов
+                list_value_good_plots = list(range(int(self.min_proofs), int(self.max_proofs)))
+            	# Процент хороших плотов
+                percentage_good_plots = 0
                 # Записываем id
-                fw.write(f'id: {self.id_plot}\n')
+                fw.write(f'id: {self.id_plot}\n'.encode('utf8'))
                 # Добовляем дату
-                fw.write(f'Дата: {today}\n')  # Дата создания файла
+                fw.write(f'Дата: {today}\n'.encode('utf8'))  # Дата создания файла
                 # Количество созданных плотов, за время работы программы до завершения
-                fw.write(f'Всего плотов: {self.counter}\n')
+                fw.write(f'Всего плотов: {self.counter}\n'.encode('utf8'))
                 for count in sorted(self.counters_info.keys()):
+                    if count in list_value_good_plots:
+                        percentage_good_plots = percentage_good_plots + float(to_fixed((int(self.counters_info[count]) / self.counter) * 100, 2))
                     # Запись значений из словаря в файл с вычислением процента
                     fw.write(
-                        f'{count} = {self.counters_info[count]}  {to_fixed((int(self.counters_info[count]) / self.counter) * 100, 2)}%\n')
+                        f'{count} = {self.counters_info[count]}  {to_fixed((int(self.counters_info[count]) / self.counter) * 100, 2)}%\n'.encode('utf8'))
+                fw.write(str(f'Процент хороших плотов: {percentage_good_plots}%\n'.encode('utf8')))
 
             def to_fixed(num, digits=0):
                 '''
@@ -397,37 +404,45 @@ class Miner:
                 '''
                 return f"{num:.{digits}f}"
 
-            # Открываем файл для чтения
-            with open(f'{path_app}/counters/{name_file}.txt', 'r+') as fr:
-                # Передаем все строки из файла
-                lines_to_file = fr.readlines()
-                if len(lines_to_file) == 0:
-                    with open(f'{path_app}/counters/{name_file}.txt', 'w+') as fw:
-                        # Функция записи шаблона id, date, counter, lines
-                        # Метод для записи шаблона
-                        write_line(fw)
-                else:
-                    list_id = []  # Список id
-
-                    for i in range(len(lines_to_file)):
-                        if 'id: ' in lines_to_file[i]:
-                            list_id.append(int(lines_to_file[i][4:-1]))
-                    if self.id_plot == 0:
-                        self.id_plot = int(list_id[-1]) + 1
-                        with open(f'{path_app}/counters/{name_file}.txt', 'r+') as fw:
-                            for line in lines_to_file:
-                                fw.write(line)
+            try:
+                # Открываем файл для чтения
+                with open(f'{path_app}/counters/{name_file}.txt', 'r+', encoding='utf-8') as fr:
+                    # Передаем все строки из файла
+                    lines_to_file = fr.readlines()
+                    if len(lines_to_file) == 0:
+                        with open(f'{path_app}/counters/{name_file}.txt', 'w+') as fw:
+                            # Функция записи шаблона id, date, counter, lines
                             # Метод для записи шаблона
                             write_line(fw)
-                    with open(f'{path_app}/counters/{name_file}.txt', 'r+') as fw:
+                    else:
+                        list_id = []  # Список id
+
                         for i in range(len(lines_to_file)):
-                            if f'id: {self.id_plot}' in lines_to_file[i] and i == 0:
-                                write_line(fw)
-                            elif f'id: {self.id_plot}' in lines_to_file[i]:
-                                for line in lines_to_file[:i]:
-                                    fw.write(line)
+                            if 'id: ' in lines_to_file[i]:
+                                list_id.append(int(lines_to_file[i][4:-1]))
+                        if self.id_plot == 0:
+                            self.id_plot = int(list_id[-1]) + 1
+                            with open(f'{path_app}/counters/{name_file}.txt', 'r+', encoding='utf-8') as fw:
+                                for line in lines_to_file:
+                                    fw.write(str(line.encode('utf8')))
                                 # Метод для записи шаблона
                                 write_line(fw)
+                        with open(f'{path_app}/counters/{name_file}.txt', 'r+') as fw:
+                            for i in range(len(lines_to_file)):
+                                if f'id: {self.id_plot}' in lines_to_file[i] and i == 0:
+                                    write_line(fw)
+                                elif f'id: {self.id_plot}' in lines_to_file[i]:
+                                    for line in lines_to_file[:i]:
+                                        fw.write(str(line.encode('utf8')))
+                                    # Метод для записи шаблона
+                                    write_line(fw)
+            except Exception as e:
+                for file in os.listdir(f'{path_app}/counters/'):
+                    file_path = os.path.join(f'{path_app}/counters/{file}')
+                    os.remove(file_path)
+
+                    os.mkdir(f'{path_app}/counters/counter.txt')
+                    self.write_counter(proofs)
 
         except FileNotFoundError:
             #
