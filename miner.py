@@ -1,6 +1,8 @@
 import pickle
 
 pickle.DEFAULT_PROTOCOL
+import sys
+
 from sys import platform
 
 from multiprocessing import Process
@@ -36,6 +38,7 @@ else:
 config = configparser.ConfigParser()
 config.read(f'{path_app}{separator}/PATH.ini')
 
+sys.setrecursionlimit(9999)
 
 # Класс Mainer
 class Miner:
@@ -45,6 +48,10 @@ class Miner:
     # Переменные с путями
     path_create_to_plots = config.get('section_path_plots', 'path_create_to_plots')
     path_where_transfer_plot = config.get('section_path_plots', 'path_where_transfer_plot')
+    path_raid = config.get('section_path_plots', 'path_raid')
+    dir_create_plots = config.get('section_path_plots', 'dir_create_plots')
+    path_mnt = config.get('section_path_plots', 'path_mnt')
+    dir_mining = config.get('section_path_plots', 'dir_mining')
     min_proofs = int(config.get('section_value_proofs', 'min_value_proofs'))
     max_proofs = int(config.get('section_value_proofs', 'max_value_proofs'))
     path_chia_exe = config.get('section_path_chia', 'path_chia_exe')
@@ -71,13 +78,15 @@ class Miner:
     counter = 0  # Количество проходов за время работы майнера до завершения его работы
     counters_info = {}  # Объект, в который мы заисываем proofs_plot = value count
 
+    # Диапазон хороших плотов
+    list_value_good_plots = list(range(int(min_proofs), int(max_proofs)))
+
     #  Инициализация приложения
     def __init__(self):
         super().__init__()  # Инициализируем приложение
 
         print('Майнер запущен!')  # Информируем пользователя о запуске майнера
         self.start_miner()  # Метод запуска майнера
-        logging.info(f'Запуск метода start_mainer(). 74. {today}')
 
     def start_miner(self):
         '''
@@ -85,8 +94,12 @@ class Miner:
         :return:
         '''
         # Если нет директории, куда будет записываться готовый плот, создаем ее
-        if '1' not in os.listdir(self.path_plot):
-            os.mkdir(f'{self.path_plot}1')
+        if self.dir_create_plots not in os.listdir(self.path_mnt):
+            os.mkdir(f'{self.path_mnt}{self.dir_create_plots}')
+
+        # Проверяем, существует ли папка, в которй будет работать майнер
+        if self.dir_mining not in os.listdir(self.path_mnt):
+            os.mkdir(f'{self.path_mnt}{self.dir_mining}')
 
         # Запускаем метод отчистки дректории
         self.clear_dir()
@@ -99,14 +112,11 @@ class Miner:
             #
             if self.first_launch and self.process_clear_cache != '':
                 self.process_clear_cache.start()
-                self.process_clear_cache.join()
-
-        logging.info(f'Запуск метода start_mainer(). 82. {today}')
+                self.process_clear_cache.terminate()
 
         # Если директория уже не пуста, тогда начинем работу с файлом
         if len(os.listdir(self.path_create_to_plots)) > 0:
             # self.first_launch = False  # Переводим значение первого запуска в False
-            logging.info(f'Плот был найден. 87. {today}')
             # Запускаем метод работы с плотом
             self.working_plotter()
             return
@@ -126,7 +136,6 @@ class Miner:
         '''
         self.first_launch = False
         print('Плот найден')  # Информируем пользователя о том что плот найден
-        logging.info(f'Начинается работа с plot. 112. {today}')
         # Обрабатываем плот
         p = subprocess.Popen(
             [
@@ -134,7 +143,7 @@ class Miner:
                 'plots',
                 'check',
                 '-g',
-                self.path_plot
+                self.path_create_to_plots
             ],
             text=True,
             stdout=subprocess.PIPE,
@@ -142,7 +151,6 @@ class Miner:
         )
 
         stdout, stderr = p.communicate()
-        logging.info(f'{stdout}. 124. {today}')
         index_proofs = stdout.find('Proofs')  # Ищем в строке слово Proofs
         index_value_proofs = index_proofs + 7  # Прибовляем к найденому иедексу
         # Делаем срез из строки stdout по индексам index_value_proofs и index_value_proofs + 2
@@ -155,130 +163,146 @@ class Miner:
 
         # Если proofs больше или равно min_proofs и меньше или равно max_proofs, переносим плот
         if self.min_proofs <= res_proofs <= self.max_proofs:
-            logging.info(f'Proofs входит в рамки между максимальным и минимальным значениями. 136. {today}')
-            try:
-                # Записываем имя файла, который будем перемещать
-                name_file_to_replace = os.listdir(self.path_create_to_plots)[0]
-                # Проверка существования директории
-                if os.path.exists(f'{self.path_where_transfer_plot}{res_proofs}'):
-                    logging.info(f'Директория найдена, будет переносится plot. 142. {today}')
-                    try:
-                        # Переносим файл в директорию
-                        print(f'Перенос плота {res_proofs}')  # Информируем пользователя о названии плота
-                        logging.info(f'Перенос плота {res_proofs}. 146. {today}')
-                        if self.process_clear_cache != '':
-                            self.process_clear_cache.start()
-                            self.process_clear_cache.join()
-                            # self.process_clear_cache.close()
-                        shutil.move(
-                            f'{self.path_create_to_plots}{name_file_to_replace}',
-                            f'{self.path_where_transfer_plot}{str(res_proofs)}{separator}{name_file_to_replace}'
-                        )
-                        if platform != "linux" and platform != "linux2":
-                            self.run_bat()  # Запуск батника
-                    except FileNotFoundError:
-                        logging.error(f'Файл небыл найден! 157. {today}')
-                        print('Файл перемещен!')  # Если файл не найден, обрабатываем как ошибку
-                    except FileExistsError:
-                        logging.error(f'Есть ошибка в существующем файле! 160. {today}')
-                        print('Файл перемещен!')  # Если что-то не так с файлом, выводим сообщение
-
-                else:
-                    try:
-                        os.mkdir(f'{self.path_where_transfer_plot}{res_proofs}')  # Создаем директорию
-                        print('Создание директории')  # Инофрмируем пользователя о создании директории
-                        logging.info(f'Создание директории {res_proofs}. 168. {today}')
-
-                        try:
-                            print(f'Перенос плота {res_proofs}')  # Информируем пользователя о названии плота
-                            logging.info(f'Переносим plot {res_proofs}. 172. {today}')
-                            if self.process_clear_cache != '':
-                                self.process_clear_cache.start()
-                                # self.process_clear_cache.close()
-                            # Переносим файл плота
-                            shutil.move(
-                                f'{self.path_create_to_plots}{name_file_to_replace}',
-                                f'{self.path_where_transfer_plot}{str(res_proofs)}{separator}{name_file_to_replace}'
-                            )
-                            if platform != "linux" and platform != "linux2":
-                                self.run_bat()  # Запуск батника
-                        except FileNotFoundError:
-                            logging.error(f'Файла был перемещен. 184. {today}')
-                            print('Файл перемещен')
-                        except FileExistsError:
-                            logging.error(f'Ошибка файла. 185. {today}')
-                            print('Файл перемещен')
-                    except FileNotFoundError:
-                        logging.warning(f'Директория существет. 190. {today}')
-                        print('Директория существует')
-
-                    except FileExistsError:
-                        logging.warning(f'Директория существует. 194. {today}')
-                        print('Директория существует')
-            # Если не находим файл, который должна переместить
-            except IndexError:
-                logging.error(f'Файл небыл найден. 198. {today}')
-                print('Файл перемещен')
+            list_dir = []
+            for index in self.list_value_good_plots:
+                if f'{index}' in os.listdir(f'{self.path_mnt}'):
+                    list_dir.append(index)
+            if len(list_dir) == 0:
+                self.transfer_plot_method(res_proofs, self.path_mnt)
+            else:
+                for index in list_dir:
+                    if f'{index}' in os.listdir(f'{self.path_mnt}') and len(os.listdir(f'{self.path_mnt}{index}')) > 0:
+                        self.transfer_plot_method(res_proofs, self.path_raid)
+                    elif index == list_dir[-1] and len(os.listdir(f'{self.path_mnt}{list_dir[-1]}')) <= 0:
+                        self.transfer_plot_method(res_proofs, self.path_mnt)
         else:
-            logging.info(f'Удаление плота. 203. {today}')
             try:
                 print(f'Удаление плота {res_proofs}')  # Информируем пользователя о названии плота
-                logging.info(f'Удаление плота {res_proofs}! 207. {today}')
                 # Удаляем файл plot
                 os.remove(f'{self.path_create_to_plots}{separator}{os.listdir(self.path_create_to_plots)[0]}')
             except FileNotFoundError:
                 logging.error(f'Произошла ошибка, файл небыл найден!!! 214. {today}')
-        if platform != "linux" and platform != "linux2":
-            self.run_bat()  # Запуск батника
-            self.run_chia_exe()
+            if platform != "linux" and platform != "linux2":
+                self.run_bat()  # Запуск батника
+                self.run_chia_exe()
 
         return
 
+    def transfer_plot_method(self, res_proofs, path_transfer):
+        '''
+
+        :param res_proofs:
+        :return:
+        '''
+
+        try:
+            # Записываем имя файла, который будем перемещать
+            name_file_to_replace = os.listdir(self.path_create_to_plots)[0]
+            # Проверка существования директории
+            if os.path.exists(f'{path_transfer}{res_proofs}'):
+                try:
+                    # Переносим файл в директорию
+                    print(f'Перенос плота {res_proofs}')  # Информируем пользователя о названии плота
+                    # if self.process_clear_cache != '':
+                    #     self.process_clear_cache.start()
+                    #     self.process_clear_cache.join()
+                    shutil.move(
+                        f'{self.path_create_to_plots}{name_file_to_replace}',
+                        f'{path_transfer}{str(res_proofs)}{separator}{name_file_to_replace}'
+                    )
+                    if platform != "linux" and platform != "linux2":
+                        self.run_bat()  # Запуск батника
+                except FileNotFoundError:
+                    logging.error(f'Файл небыл найден! 157. {today}')
+                    # print('Файл перемещен!')  # Если файл не найден, обрабатываем как ошибку
+                except FileExistsError:
+                    logging.error(f'Есть ошибка в существующем файле! 160. {today}')
+                    # print('Файл перемещен!')  # Если что-то не так с файлом, выводим сообщение
+            else:
+                try:
+                    os.mkdir(f'{path_transfer}{res_proofs}')  # Создаем директорию
+                    os.chmod(f'{path_transfer}{res_proofs}', 0o777)
+                    print('Создание директории')  # Инофрмируем пользователя о создании директории
+
+                    try:
+                        print(f'Перенос плота {res_proofs}')  # Информируем пользователя о названии плота
+                        if self.process_clear_cache != '':
+                            self.process_clear_cache.start()
+                        # Переносим файл плота
+                        shutil.move(
+                            f'{self.path_create_to_plots}{name_file_to_replace}',
+                            f'{path_transfer}{str(res_proofs)}{separator}{name_file_to_replace}'
+                        )
+                        if platform != "linux" and platform != "linux2":
+                            self.run_bat()  # Запуск батника
+                    except FileNotFoundError:
+                        logging.error(f'Файла был перемещен. 184. {today}')
+                        # print('Файл перемещен')
+                    except FileExistsError:
+                        logging.error(f'Ошибка файла. 185. {today}')
+                        # print('Файл перемещен')
+                except FileNotFoundError:
+                    logging.warning(f'Директория существет. 190. {today}')
+                    print('Директория существует')
+
+                except FileExistsError:
+                    logging.warning(f'Директория существует. 194. {today}')
+                    print('Директория существует')
+        # Если не находим файл, который должна переместить
+        except IndexError:
+            logging.error(f'Файл небыл найден. 198. {today}')
+            # print('Файл перемещен')
+
     def run_chia_exe(self):
-        # Логика отображения информации
-        with open(f'{path_app}/counters/counter.txt', 'r+') as fr:
-            lines = fr.readlines()  # Записываем все строки из файла
+        try:
+            # Логика отображения информации
+            with open(f'{path_app}/counters/counter.txt', 'r+') as fr:
+                lines = fr.readlines()  # Записываем все строки из файла
 
-            counter_id = 0  # Количесвто id
+                counter_id = 0  # Количесвто id
 
-            # Если id майнера, который запущен сейчас, не равен 0
-            if self.id_plot > 0:
-                print('\n')  # Делаем отступ в 2 строки сверху
-                print('*' * 50)  # Выводим 50 звездочек, для разграничения
-                # Перебираем список строк из файла
-                for line in lines:
-                    # Ищем все элементы, де есть id
-                    if 'id: ' in line:
-                        # Если нашли id, прибавляем 1 в переменную counter_id
-                        counter_id = counter_id + 1
-                # Если мы нашли всего 1 id
-                if counter_id == 1:
-                    # Перебираем список со строками
+                # Если id майнера, который запущен сейчас, не равен 0
+                if self.id_plot > 0:
+                    print('\n')  # Делаем отступ в 2 строки сверху
+                    print('*' * 50)  # Выводим 50 звездочек, для разграничения
+                    # Перебираем список строк из файла
                     for line in lines:
-                        # Выводим все строки в терминал
-                        print(line)
+                        # Ищем все элементы, де есть id
+                        if 'id: ' in line:
+                            # Если нашли id, прибавляем 1 в переменную counter_id
+                            counter_id = counter_id + 1
+                    # Если мы нашли всего 1 id
+                    if counter_id == 1:
+                        # Перебираем список со строками
+                        for line in lines:
+                            # Выводим все строки в терминал
+                            print(line)
 
-                # Если количество id больше 1
-                elif counter_id > 1:
+                    # Если количество id больше 1
+                    elif counter_id > 1:
 
-                    start = None  # Перемнная, в которую передаем индекс нашего id в списке
-                    # Перебираем список со сроками и вытаскиваем индексы
-                    for i in range(len(lines)):
-                        # Перебираем все строки из файла и ищем строку с id: ищем наш
-                        if f'id: {self.id_plot}' in lines[i]:
-                            # Добавляем номер индекса в переменную
-                            start = i
-                    # Пербираем элементы из списка от определенного индекса
-                    for line in lines[start:]:
-                        print(line[:-1])
-                        # if 'id: ' in line or 'Дата: ' in line or 'Всего плотов: ' in line:
-                        #     print(line)  # Выводим все строки от определенного индекса
-                        # else:
-                        #     print(line[:-1])
-                print('*' * 50)  # Выводим 50 звездочек для разграничения
-                print('\n')
+                        start = None  # Перемнная, в которую передаем индекс нашего id в списке
+                        # Перебираем список со сроками и вытаскиваем индексы
+                        for i in range(len(lines)):
+                            # Перебираем все строки из файла и ищем строку с id: ищем наш
+                            if f'id: {self.id_plot}' in lines[i]:
+                                # Добавляем номер индекса в переменную
+                                start = i
+                        # Пербираем элементы из списка от определенного индекса
+                        for line in lines[start:]:
+                            print(line[:-1])
+                            # if 'id: ' in line or 'Дата: ' in line or 'Всего плотов: ' in line:
+                            #     print(line)  # Выводим все строки от определенного индекса
+                            # else:
+                            #     print(line[:-1])
+                    print('*' * 50)  # Выводим 50 звездочек для разграничения
+                    print('\n')
+        except FileNotFoundError:
+            file_open = open(f'{path_app}/counters/counter.txt', 'w+')
+            file_open.write(str(''))
+            file_open.close()
+            self.start_miner()
         print('Запуск Chia.exe')  # Информируем пользователя о запуске chia
-        logging.info(f'Запуск chia.exe. 228. {today}')
         try:
             p = subprocess.Popen(
                 [
@@ -311,7 +335,6 @@ class Miner:
             # Здесь мы обрабатываем все то, что приходит в stdout
             for line in p.stdout:
                 print(line.decode().strip())
-                logging.info(f'{line.decode().strip()} {today}')
             # Если в переменной есть поцесс, закрываем его
             if self.process_chia_exe != '':
                 self.process_chia_exe.close()
@@ -329,7 +352,6 @@ class Miner:
         :return:
         '''
         print('Запуск .bat файла')  # Информируем пользователя о запуске bat файла
-        logging.info(f'Запуск bat. 258. {today}')  # Логирование действия
         os.startfile(f'{path_app}\\run_bat.exe')  # Запуск файла в новом окне
         return
 
@@ -341,7 +363,6 @@ class Miner:
         '''
         print(f'Отчистка каталога {self.path_plot}')
         # print(f'Отчистка каталога {self.t2}')
-        logging.info(f'Отчистка каталога {self.path_plot} .272.{today}')
         for the_file in os.listdir(self.path_plot):
             file_path = os.path.join(self.path_plot, the_file)
             try:
@@ -362,7 +383,6 @@ class Miner:
         :return:
         '''
         print('Отчистка кэша')
-        logging.info(f'Отчистка кэша. 146. {today}')
         subprocess.run(['sudo', 'home/a111/miner/clearcache.sh'])
 
     def write_counter(self, proofs):
@@ -377,23 +397,21 @@ class Miner:
             self.counters_info[proofs] = 1
         try:
             def write_line(fw):
-                # Диапазон хороших плотов
-                list_value_good_plots = list(range(int(self.min_proofs), int(self.max_proofs)))
             	# Процент хороших плотов
                 percentage_good_plots = 0
                 # Записываем id
-                fw.write(f'id: {self.id_plot}\n'.encode('utf8'))
+                fw.write(f'id: {self.id_plot}\n')
                 # Добовляем дату
-                fw.write(f'Дата: {today}\n'.encode('utf8'))  # Дата создания файла
+                fw.write(f'Дата: {today}\n')  # Дата создания файла
                 # Количество созданных плотов, за время работы программы до завершения
-                fw.write(f'Всего плотов: {self.counter}\n'.encode('utf8'))
+                fw.write(f'Всего плотов: {self.counter}\n')
                 for count in sorted(self.counters_info.keys()):
-                    if count in list_value_good_plots:
+                    if count in self.list_value_good_plots:
                         percentage_good_plots = percentage_good_plots + float(to_fixed((int(self.counters_info[count]) / self.counter) * 100, 2))
                     # Запись значений из словаря в файл с вычислением процента
                     fw.write(
-                        f'{count} = {self.counters_info[count]}  {to_fixed((int(self.counters_info[count]) / self.counter) * 100, 2)}%\n'.encode('utf8'))
-                fw.write(str(f'Процент хороших плотов: {percentage_good_plots}%\n'.encode('utf8')))
+                        f'{count} = {self.counters_info[count]}  {to_fixed((int(self.counters_info[count]) / self.counter) * 100, 2)}%\n')
+                fw.write(str(f'Процент хороших плотов: {percentage_good_plots}%\n'))
 
             def to_fixed(num, digits=0):
                 '''
@@ -406,7 +424,7 @@ class Miner:
 
             try:
                 # Открываем файл для чтения
-                with open(f'{path_app}/counters/{name_file}.txt', 'r+', encoding='utf-8') as fr:
+                with open(f'{path_app}/counters/{name_file}.txt', 'r+') as fr:
                     # Передаем все строки из файла
                     lines_to_file = fr.readlines()
                     if len(lines_to_file) == 0:
@@ -422,9 +440,9 @@ class Miner:
                                 list_id.append(int(lines_to_file[i][4:-1]))
                         if self.id_plot == 0:
                             self.id_plot = int(list_id[-1]) + 1
-                            with open(f'{path_app}/counters/{name_file}.txt', 'r+', encoding='utf-8') as fw:
+                            with open(f'{path_app}/counters/{name_file}.txt', 'r+') as fw:
                                 for line in lines_to_file:
-                                    fw.write(str(line.encode('utf8')))
+                                    fw.write(str(line))
                                 # Метод для записи шаблона
                                 write_line(fw)
                         with open(f'{path_app}/counters/{name_file}.txt', 'r+') as fw:
@@ -433,7 +451,7 @@ class Miner:
                                     write_line(fw)
                                 elif f'id: {self.id_plot}' in lines_to_file[i]:
                                     for line in lines_to_file[:i]:
-                                        fw.write(str(line.encode('utf8')))
+                                        fw.write(str(line))
                                     # Метод для записи шаблона
                                     write_line(fw)
             except Exception as e:
@@ -441,8 +459,11 @@ class Miner:
                     file_path = os.path.join(f'{path_app}/counters/{file}')
                     os.remove(file_path)
 
-                    os.mkdir(f'{path_app}/counters/counter.txt')
-                    self.write_counter(proofs)
+                    file_counter = open(f'{path_app}/counters/counter.txt', 'w+')
+
+                    file_counter.write(str(''))
+                    file_counter.close()
+                    # self.write_counter(proofs)
 
         except FileNotFoundError:
             #
